@@ -110,6 +110,9 @@ object Audio {
     private fun mixerFor(name: String?): Mixer.Info? =
         if (name.isNullOrEmpty()) null else AudioSystem.getMixerInfo().firstOrNull { it.name == name && !it.name.startsWith("Port ") }
 
+    @Volatile private var lastNote = ""
+    private val failedOnce = java.util.Collections.synchronizedSet(HashSet<String>())
+
     private fun openOut(device: String?): SourceDataLine? = try {
         val info = DataLine.Info(SourceDataLine::class.java, format)
         val m = mixerFor(device)
@@ -118,7 +121,7 @@ object Audio {
         l.start()
         l
     } catch (e: Exception) {
-        Log.w("não abri a saída '$device': ${e.message}"); null
+        if (failedOnce.add("out:$device")) Log.w("não abri a saída '$device': ${e.message}"); null
     }
 
     private class Mic(val line: TargetDataLine, val channels: Int)
@@ -133,7 +136,7 @@ object Audio {
                 l.start()
                 return Mic(l, fmt.channels)
             } catch (e: Exception) {
-                Log.w("não abri o microfone '$device' (${fmt.channels} canal): ${e.message}")
+                if (failedOnce.add("mic:$device:${fmt.channels}")) Log.w("não abri o microfone '$device' (${fmt.channels} canal): ${e.message}")
             }
         }
         return null
@@ -178,7 +181,8 @@ object Audio {
                             ui { micStatus = ms }
                         } else ui { micStatus = if (micOn) Status.Missing else Status.Off }
                         micWanted = micOn
-                        Log.w("Discord: ${chosen ?: "(sem cabo)"} ${if (line != null) "ok" else "falhou"}; microfone: ${if (mic != null) "ok" else "não"}")
+                        val note = "Discord: ${chosen ?: "(sem cabo)"} ${if (line != null) "ok" else "falhou"}; microfone: ${if (mic != null) "ok" else "não"}"
+                        if (note != lastNote) { Log.w(note); lastNote = note }
                     } else if (wantMonitor) {
                         line = openOut(Settings.monitorDevice.takeIf { it.isNotEmpty() })
                         val st = if (line != null) Status.Ok else Status.Missing

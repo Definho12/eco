@@ -68,6 +68,9 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -363,7 +366,9 @@ private fun Footer() {
         IconBtn(if (Settings.micOn) Ico.Mic else Ico.MicOff, if (Settings.micOn) C.Text else C.Bad) { Settings.micOn = !Settings.micOn; Settings.save() }
         Spacer(Modifier.width(8.dp))
         Column {
-            T(if (Settings.micOn) "Seu microfone" else "Microfone desligado", 12.5.sp, if (Settings.micOn) C.Sub else C.Bad)
+            val micMissing = Settings.micOn && Audio.discordStatus == Audio.Status.Ok && Audio.micStatus == Audio.Status.Missing
+            T(when { !Settings.micOn -> "Microfone desligado"; micMissing -> "Microfone não encontrado"; else -> "Seu microfone" }, 12.5.sp,
+                when { !Settings.micOn -> C.Bad; micMissing -> C.Warn; else -> C.Sub })
             Spacer(Modifier.height(5.dp))
             MicMeter()
         }
@@ -401,12 +406,7 @@ private fun VolumeGroup(label: String, value: Float, enabled: Boolean = true, on
             Spacer(Modifier.width(6.dp))
             T("${(value * 100).toInt()}%", 12.sp, C.Faint)
         }
-        Slider(
-            value, onChange, Modifier.width(150.dp).height(20.dp), enabled = enabled,
-            onValueChangeFinished = { Settings.save() },
-            colors = SliderDefaults.colors(thumbColor = C.Text, activeTrackColor = C.Sub, inactiveTrackColor = C.Line,
-                disabledThumbColor = C.Faint, disabledActiveTrackColor = C.Line),
-        )
+        ThinSlider(value, onChange, Modifier.width(150.dp), enabled = enabled, onFinished = { Settings.save() })
     }
 }
 
@@ -455,8 +455,7 @@ private fun EditDialog(p: Pad) {
                 Spacer(Modifier.height(18.dp))
                 Label("Volume deste som")
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Slider(p.volume, { p.volume = it }, Modifier.weight(1f), valueRange = 0.05f..1.5f,
-                        colors = SliderDefaults.colors(thumbColor = C.Text, activeTrackColor = C.Sub, inactiveTrackColor = C.Line))
+                    ThinSlider(p.volume / 1.5f, { p.volume = (it * 1.5f).coerceAtLeast(0.05f) }, Modifier.weight(1f))
                     Spacer(Modifier.width(10.dp))
                     T("${(p.volume * 100).toInt()}%", 12.5.sp, C.Sub, modifier = Modifier.width(42.dp))
                     Btn("Testar") { Board.play(p) }
@@ -646,5 +645,29 @@ private fun BoxScope.Toast() {
             .padding(horizontal = 16.dp, vertical = 11.dp)) {
             T(msg ?: "", 13.5.sp, C.Text, lineHeight = 18.sp)
         }
+    }
+}
+
+/** A thin, quiet slider (0..1). */
+@Composable
+fun ThinSlider(value: Float, onChange: (Float) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, onFinished: () -> Unit = {}) {
+    var widthPx by remember { mutableStateOf(1f) }
+    val src = remember { MutableInteractionSource() }
+    val hover by src.collectIsHoveredAsState()
+    fun at(x: Float) = (x / widthPx).coerceIn(0f, 1f)
+    androidx.compose.foundation.Canvas(
+        modifier.height(20.dp).hoverable(src)
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .then(if (!enabled) Modifier else Modifier
+                .pointerInput(Unit) { detectTapGestures { onChange(at(it.x)); onFinished() } }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(onDragEnd = onFinished, onDragCancel = onFinished) { ch, _ -> onChange(at(ch.position.x)) }
+                })
+    ) {
+        val r = 2.dp.toPx(); val y = size.height / 2
+        val x = value.coerceIn(0f, 1f) * size.width
+        drawRoundRect(C.Line, androidx.compose.ui.geometry.Offset(0f, y - r), androidx.compose.ui.geometry.Size(size.width, 2 * r), androidx.compose.ui.geometry.CornerRadius(r))
+        drawRoundRect(if (enabled) C.Sub else C.Border, androidx.compose.ui.geometry.Offset(0f, y - r), androidx.compose.ui.geometry.Size(x, 2 * r), androidx.compose.ui.geometry.CornerRadius(r))
+        if (enabled) drawCircle(C.Text, (if (hover) 7.dp else 6.dp).toPx(), androidx.compose.ui.geometry.Offset(x.coerceIn(6.dp.toPx(), size.width - 6.dp.toPx()), y))
     }
 }
