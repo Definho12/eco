@@ -34,7 +34,7 @@ class DecodeTest {
         assertTrue("faltam arquivos de teste", files.size >= 4)
         for (f in files) {
             val d = try { Decode.file(f) } catch (e: Exception) { throw AssertionError("${f.name}: ${e.message}", e) }
-            assertEquals(f.name, 2.0, seconds(d), 0.12)
+            assertEquals("${f.name} [${Decode.lastInfo}]", 2.0, seconds(d), 0.12)
             val peak = d.maxOf { kotlin.math.abs(it.toInt()) }
             assertTrue("${f.name} peak $peak", peak in 6000..20000)
         }

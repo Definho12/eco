@@ -13,6 +13,8 @@ class DecodeException(msg: String) : Exception(msg)
 
 object Decode {
     val extensions = setOf("mp3", "wav", "ogg")
+    /** what the last file looked like (for the log and the tests) */
+    @Volatile var lastInfo = ""
 
     /** Reads an MP3, WAV or OGG file into 48 kHz stereo samples. */
     fun file(f: File): ShortArray {
@@ -35,6 +37,19 @@ object Decode {
             else try { AudioSystem.getAudioInputStream(target, s) } catch (e: Exception) {
                 throw DecodeException("formato de áudio não suportado")
             }
+            // trust what the decoder actually hands back, not what was asked for
+            val got = pcm.format
+            val outRate = got.sampleRate.takeIf { it > 0 } ?: rate
+            val outCh = got.channels.takeIf { it in 1..8 } ?: ch
+            val big = got.isBigEndian
+            lastInfo = "$base -> $got"
+            if (got.sampleSizeInBits != 16) throw DecodeException("formato de áudio não suportado")
+            readFrames(pcm, outRate, outCh, big).let { return it }
+        }
+    }
+
+    private fun readFrames(pcm: AudioInputStream, rate: Float, ch: Int, big: Boolean): ShortArray {
+        run {
             val limit = (rate * ch * 2 * (MAX_SECONDS + 1)).toLong()
             val bytes = readUpTo(pcm, limit)
             if (bytes.size >= limit) throw DecodeException("som longo demais (o máximo é $MAX_SECONDS segundos)")
@@ -46,7 +61,9 @@ object Decode {
                 val o = i * ch * 2
                 fun sample(c: Int): Float {
                     val p = o + c * 2
-                    return ((bytes[p].toInt() and 0xff) or (bytes[p + 1].toInt() shl 8)).toShort() / 32768f
+                    val lo = if (big) bytes[p + 1] else bytes[p]
+                    val hi = if (big) bytes[p] else bytes[p + 1]
+                    return ((lo.toInt() and 0xff) or (hi.toInt() shl 8)).toShort() / 32768f
                 }
                 if (ch == 1) { val v = sample(0); left[i] = v; right[i] = v }
                 else { left[i] = sample(0); right[i] = sample(1) }
