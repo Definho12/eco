@@ -27,7 +27,7 @@ class DecodeTest {
         assertEquals(1.0, seconds(out), 0.001)
     }
 
-    /** MP3, OGG and other WAV kinds made by the build machine with ffmpeg (each is 2 s of tone). */
+    /** MP3 and WAV kinds made by the build machine with ffmpeg (each is 2 s of tone). */
     @Test fun otherFormats() {
         val dir = System.getenv("ECO_TEST_MEDIA")?.takeIf { it.isNotEmpty() }?.let { File(it) } ?: return
         val files = dir.listFiles()!!.filter { it.extension in Decode.extensions }

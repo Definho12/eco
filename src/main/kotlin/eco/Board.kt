@@ -192,7 +192,7 @@ object Board {
         var added = 0
         val failed = ArrayList<String>()
         for (src in files) {
-            if (src.extension.lowercase() !in Decode.extensions) { failed += "${src.name}: só dá para usar MP3, WAV ou OGG"; continue }
+            if (src.extension.lowercase() !in Decode.extensions) { failed += "${src.name}: só dá para usar MP3 ou WAV"; continue }
             try {
                 val data = Decode.file(src) // check it plays before keeping it
                 var dest = File(AppDirs.sounds, src.name)

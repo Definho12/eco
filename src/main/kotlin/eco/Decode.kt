@@ -12,17 +12,16 @@ const val MAX_SECONDS = 180
 class DecodeException(msg: String) : Exception(msg)
 
 object Decode {
-    val extensions = setOf("mp3", "wav", "ogg")
+    val extensions = setOf("mp3", "wav")
     /** what the last file looked like (for the log and the tests) */
     @Volatile var lastInfo = ""
 
-    /** Reads an MP3, WAV or OGG file into 48 kHz stereo samples. */
+    /** Reads an MP3 or WAV file into 48 kHz stereo samples. */
     fun file(f: File): ShortArray {
         val ext = f.extension.lowercase()
         val src: AudioInputStream = try {
             when (ext) {
                 "mp3" -> javazoom.spi.mpeg.sampled.file.MpegAudioFileReader().getAudioInputStream(f)
-                "ogg" -> javazoom.spi.vorbis.sampled.file.VorbisAudioFileReader().getAudioInputStream(f)
                 else -> AudioSystem.getAudioInputStream(f)
             }
         } catch (e: Exception) {

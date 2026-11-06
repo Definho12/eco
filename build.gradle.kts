@@ -17,14 +17,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
     implementation("org.json:json:20240303")
     implementation("net.java.dev.jna:jna-platform:5.15.0")
-    // reading MP3 and OGG files (WAV is built into Java)
+    // reading MP3 files (WAV is built into Java)
     implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
-    implementation("com.googlecode.soundlibs:vorbisspi:1.0.3.3")
     testImplementation("junit:junit:4.13.2")
 }
 
 tasks.test {
-    // sample files made by the build machine (mp3/ogg), see the workflow
+    // sample files made by the build machine (mp3/wav), see the workflow
     environment("ECO_TEST_MEDIA", System.getenv("ECO_TEST_MEDIA") ?: "")
     testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }

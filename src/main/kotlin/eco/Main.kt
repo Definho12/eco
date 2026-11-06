@@ -137,7 +137,7 @@ private fun ScreenshotRunner(path: String, window: java.awt.Window, done: () -> 
         delay(1200)
         capture(window, path.replace(".png", "-4.png"))
         UiState.editing = null
-        UiState.toast("2 sons adicionados. Não deu: video.mp4: só dá para usar MP3, WAV ou OGG")
+        UiState.toast("2 sons adicionados. Não deu: video.mp4: só dá para usar MP3 ou WAV")
         delay(800)
         capture(window, path.replace(".png", "-5.png"))
         done()

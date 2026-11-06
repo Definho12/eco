@@ -152,9 +152,9 @@ fun addSounds(files: List<File>) {
 }
 
 fun pickFiles(window: java.awt.Window?) {
-    val d = java.awt.FileDialog(window as? java.awt.Frame, "Escolha os sons (MP3, WAV ou OGG)", java.awt.FileDialog.LOAD)
+    val d = java.awt.FileDialog(window as? java.awt.Frame, "Escolha os sons (MP3 ou WAV)", java.awt.FileDialog.LOAD)
     d.isMultipleMode = true
-    d.file = "*.mp3;*.wav;*.ogg"
+    d.file = "*.mp3;*.wav"
     d.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in Decode.extensions }
     d.isVisible = true
     addSounds(d.files?.toList() ?: emptyList())
@@ -294,7 +294,7 @@ private fun Pads(window: java.awt.Window?) {
             Spacer(Modifier.height(14.dp))
             T("Nenhum som ainda", 17.sp, C.Text, FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
-            T("Adicione arquivos MP3, WAV ou OGG, ou arraste para cá", 13.5.sp, C.Sub)
+            T("Adicione arquivos MP3 ou WAV, ou arraste para cá", 13.5.sp, C.Sub)
             Spacer(Modifier.height(18.dp))
             Btn("Adicionar sons", Ico.Plus, primary = true) { pickFiles(window) }
         }
