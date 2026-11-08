@@ -1,0 +1,5 @@
+08/11 22:48:44.007  iniciando (Java 17.0.21, Linux)
+08/11 22:48:45.390  abrindo a janela (9 sons)
+08/11 22:48:45.516  Discord: (sem cabo) falhou; microfone: não
+08/11 22:48:45.521  não abri a saída 'null': No line matching interface SourceDataLine supporting format PCM_SIGNED 48000.0 Hz, 16 bit, stereo, 4 bytes/frame, little-endian is supported.
+08/11 22:48:55.661  saindo
