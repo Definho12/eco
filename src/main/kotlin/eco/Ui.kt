@@ -367,8 +367,8 @@ private fun Footer() {
         Spacer(Modifier.width(8.dp))
         Column {
             val micMissing = Settings.micOn && Audio.discordStatus == Audio.Status.Ok && Audio.micStatus == Audio.Status.Missing
-            T(when { !Settings.micOn -> "Microfone desligado"; micMissing -> "Microfone não encontrado"; else -> "Seu microfone" }, 12.5.sp,
-                when { !Settings.micOn -> C.Bad; micMissing -> C.Warn; else -> C.Sub })
+            T(when { !Settings.micOn -> "Microfone desligado"; micMissing -> "Microfone não abriu (veja Ajustes)"; else -> Audio.micName?.let { "Mic: $it" } ?: "Seu microfone" }, 12.5.sp,
+                when { !Settings.micOn -> C.Bad; micMissing -> C.Warn; else -> C.Sub }, modifier = Modifier.widthIn(max = 200.dp), maxLines = 1)
             Spacer(Modifier.height(5.dp))
             MicMeter()
         }

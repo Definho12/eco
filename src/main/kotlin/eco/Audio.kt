@@ -100,7 +100,10 @@ object Audio {
 
     /** Microphones. */
     fun inputs(): List<String> = try {
-        AudioSystem.getMixerInfo().filter { !it.name.startsWith("Port ") && hasLine(it, TargetDataLine::class.java) }.map { it.name }.distinct()
+        AudioSystem.getMixerInfo().filter {
+            !it.name.startsWith("Port ") && !it.name.contains("Primary Sound Capture", true) &&
+                try { AudioSystem.getMixer(it).targetLineInfo.isNotEmpty() } catch (_: Exception) { false }
+        }.map { it.name }.distinct()
     } catch (_: Exception) { emptyList() }
 
     /** The virtual cable's input (what Discord hears on "CABLE Output"). */
@@ -124,22 +127,60 @@ object Audio {
         if (failedOnce.add("out:$device")) Log.w("não abri a saída '$device': ${e.message}"); null
     }
 
-    private class Mic(val line: TargetDataLine, val channels: Int)
+    /** An open microphone. It may run at any rate; each 10 ms block is stretched to 48 kHz. */
+    private class Mic(val line: TargetDataLine, val channels: Int, val rate: Int, val name: String) {
+        val frames = rate / 100
+        var lastA = 0f
+        var lastB = 0f
+    }
 
-    private fun openMic(device: String?): Mic? {
-        val m = mixerFor(device)
-        for (fmt in listOf(format, monoFormat)) {
+    /** the microphone actually in use (for the screen) */
+    var micName by mutableStateOf<String?>(null)
+
+    private fun isCable(name: String) = name.contains("CABLE", true) || name.contains("VB-Audio", true)
+
+    private fun tryMic(m: Mixer.Info?, label: String): Mic? {
+        // 48 kHz first; many headsets and webcams only do 44.1, 32 or 16 kHz
+        for (rate in intArrayOf(48000, 44100, 32000, 16000, 96000, 24000, 8000)) for (ch in intArrayOf(2, 1)) {
+            val fmt = AudioFormat(rate.toFloat(), 16, ch, true, false)
             try {
                 val info = DataLine.Info(TargetDataLine::class.java, fmt)
                 val l = (if (m != null) AudioSystem.getMixer(m).getLine(info) else AudioSystem.getLine(info)) as TargetDataLine
-                l.open(fmt, FRAMES * fmt.frameSize * 8)
+                l.open(fmt, (rate / 100) * fmt.frameSize * 8)
                 l.start()
-                return Mic(l, fmt.channels)
-            } catch (e: Exception) {
-                if (failedOnce.add("mic:$device:${fmt.channels}")) Log.w("não abri o microfone '$device' (${fmt.channels} canal): ${e.message}")
+                return Mic(l, ch, rate, label)
+            } catch (_: Exception) {
             }
         }
+        if (failedOnce.add("mic:$label")) Log.w("não abri o microfone '$label' em nenhum formato")
         return null
+    }
+
+    /**
+     * Opens your microphone: the one chosen in Ajustes, else Windows' default,
+     * else any other real microphone (never the virtual cable, that would be Eco hearing itself).
+     */
+    private fun openMic(device: String?): Mic? {
+        val chosen = mixerFor(device)
+        if (chosen != null) tryMic(chosen, chosen.name)?.let { return it }
+        tryMic(null, "Padrão do Windows")?.let { return it }
+        val others = try {
+            AudioSystem.getMixerInfo().filter {
+                !it.name.startsWith("Port ") && !isCable(it.name) && it.name != device &&
+                    !it.name.contains("Primary Sound Capture", true) &&
+                    try { AudioSystem.getMixer(it).targetLineInfo.isNotEmpty() } catch (_: Exception) { false }
+            }
+        } catch (_: Exception) { emptyList() }
+        for (m in others) tryMic(m, m.name)?.let { return it }
+        return null
+    }
+
+    private fun micOpened(mic: Mic?) {
+        val name = mic?.name
+        val st = if (mic != null) Status.Ok else Status.Missing
+        if (mic != null && failedOnce.add("micok:${mic.name}:${mic.rate}:${mic.channels}"))
+            Log.w("microfone aberto: ${mic.name} (${mic.rate} Hz, ${mic.channels} canal)")
+        ui { micStatus = st; micName = name }
     }
 
     // ---------------- the mixing loop ----------------
@@ -163,7 +204,7 @@ object Audio {
                     // only the microphone is missing: try it again without touching the cable
                     lastTry = now
                     mic = openMic(Settings.micDevice.takeIf { it.isNotEmpty() })
-                    if (mic != null) ui { micStatus = Status.Ok }
+                    if (mic != null) micOpened(mic)
                 }
                 if (o.reopen || (line == null && wantMonitor && now - lastTry > 4000) || (!wantMonitor && line != null)) {
                     o.reopen = false; lastTry = now
@@ -177,9 +218,8 @@ object Audio {
                         ui { discordStatus = st; discordDevice = chosen }
                         if (micOn && line != null) {
                             mic = openMic(Settings.micDevice.takeIf { it.isNotEmpty() })
-                            val ms = if (mic != null) Status.Ok else Status.Missing
-                            ui { micStatus = ms }
-                        } else ui { micStatus = if (micOn) Status.Missing else Status.Off }
+                            micOpened(mic)
+                        } else ui { micStatus = if (micOn) Status.Missing else Status.Off; micName = null }
                         micWanted = micOn
                         val note = "Discord: ${chosen ?: "(sem cabo)"} ${if (line != null) "ok" else "falhou"}; microfone: ${if (mic != null) "ok" else "não"}"
                         if (note != lastNote) { Log.w(note); lastNote = note }
@@ -210,18 +250,30 @@ object Audio {
                 val m = mic
                 if (o.forDiscord && m != null) {
                     // your voice: blocks ~10 ms, which also keeps the loop in time
-                    val need = FRAMES * 2 * m.channels
+                    val n = m.frames
+                    val need = n * 2 * m.channels
                     if (micBytes.size != need) micBytes = ByteArray(need)
                     var got = 0
                     while (got < need) { val r = m.line.read(micBytes, got, need - got); if (r <= 0) break; got += r }
+                    fun sa(i: Int): Float { val p = i * 2 * m.channels; return ((micBytes[p].toInt() and 0xff) or (micBytes[p + 1].toInt() shl 8)).toShort() / 32768f }
+                    fun sb(i: Int): Float { if (m.channels == 1) return sa(i); val p = i * 4 + 2; return ((micBytes[p].toInt() and 0xff) or (micBytes[p + 1].toInt() shl 8)).toShort() / 32768f }
                     var sum = 0.0
                     for (i in 0 until FRAMES) {
-                        val p = i * 2 * m.channels
-                        val a = ((micBytes[p].toInt() and 0xff) or (micBytes[p + 1].toInt() shl 8)).toShort() / 32768f
-                        val b = if (m.channels == 2) ((micBytes[p + 2].toInt() and 0xff) or (micBytes[p + 3].toInt() shl 8)).toShort() / 32768f else a
+                        val a: Float; val b: Float
+                        if (n == FRAMES) { a = sa(i); b = sb(i) }
+                        else {
+                            // stretch this block to 480 samples, joining smoothly with the previous block
+                            val pos = (i + 1) * n.toFloat() / FRAMES - 1f
+                            val j = kotlin.math.floor(pos).toInt()
+                            val fr = pos - j
+                            val a0 = if (j < 0) m.lastA else sa(j); val b0 = if (j < 0) m.lastB else sb(j)
+                            val j1 = (j + 1).coerceAtMost(n - 1)
+                            a = a0 + (sa(j1) - a0) * fr; b = b0 + (sb(j1) - b0) * fr
+                        }
                         mix[2 * i] = a; mix[2 * i + 1] = b
                         sum += (a * a + b * b) / 2
                     }
+                    m.lastA = sa(n - 1); m.lastB = sb(n - 1)
                     micLevel = sqrt(sum / FRAMES).toFloat()
                 } else if (o.forDiscord) micLevel = 0f
 
